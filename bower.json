@@ -12,6 +12,7 @@
   ],
   "dependencies": {
     "purescript-mongodbf": "0.2.x",
-    "purescript-argonaut": "0.4.x"
+    "purescript-argonaut": "0.4.x",
+    "purescript-datetime": "0.5.x"
   }
 }
