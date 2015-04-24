@@ -12,7 +12,7 @@ import Debug.Trace
 event :: Event
 event = Event
   { name : Just "Cool Event"
-  , date : Nothing
+  , date : fromStringStrict "2015-04-24T12:00:00.000Z"
   }
 
 main = do

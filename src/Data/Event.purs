@@ -1,13 +1,13 @@
 module Data.Event where
 
 import Data.Argonaut ((~>), (:=), (.?), jsonEmptyObject, printJson)
-import Data.Argonaut.Core (Json())
+import Data.Argonaut.Core (Json(), JString(), toString)
 import Data.Argonaut.Encode (EncodeJson, encodeJson)
-import Data.Argonaut.Decode (DecodeJson, decodeJson)
+import Data.Argonaut.Decode (DecodeJson, decodeJson, decodeMaybe)
 import Data.Date
-import Data.Time (Milliseconds())
 import Data.Either
-import Data.Maybe
+import Data.Maybe (Maybe(..), maybe)
+import Data.Traversable (traverse)
 
 import Debug.Trace
 
@@ -38,37 +38,30 @@ instance showEvent :: Show Event where
     ", date: " ++ show e.date ++
     "}"
 
--- Move to somewhere else!
+-- | Encoding for date json
+
+foreign import toISOString
+  """
+  function toISOString(date){
+    return date.toISOString();
+  }
+  """ :: Date -> String
+
 
 instance encodeJsonDate :: EncodeJson Date where
-  encodeJson = encodeJson <<< toEpochMilliseconds
+  encodeJson = encodeJson <<< toISOString
 
-instance encodeJsonMilliseconds :: EncodeJson Milliseconds where
-  encodeJson = fromMilliseconds
+-- | Decoding for date json
+
+foreign import fromJString
+  """
+  function fromJString(str) {
+    return str;
+  }
+  """ :: JString -> String
 
 instance decodeJsonDate :: DecodeJson Date where
-  decodeJson x = do
-    v <- toMilliseconds x
-    case fromEpochMilliseconds v of
-      Just y -> Right y
-      Nothing -> Left "Not a Date."
-
-instance decodeJsonMilliseconds :: DecodeJson Milliseconds where
-  decodeJson = toMilliseconds
-
-foreign import fromMilliseconds
-  """
-  function fromMilliseconds(m) {
-    return m;
-  }
-  """ :: Milliseconds -> Json
-
-toMilliseconds :: Json -> Either String Milliseconds
-toMilliseconds x = Right $ _toMilliseconds x
-
-foreign import _toMilliseconds
-  """
-  function _toMilliseconds(x) {
-    return x
-  }
-  """ :: Json -> Milliseconds
+  decodeJson json = maybe (Left "Couldn't decode.") Right $ do
+    str <- toString json
+    fromStringStrict $ fromJString str
+  
