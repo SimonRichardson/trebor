@@ -1,0 +1,7 @@
+{
+  "name"    : "trebor",
+  "private" : true,
+  "devDependencies": {
+    "mongodb": "2.0.x"
+  }
+}

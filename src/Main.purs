@@ -1,20 +1,31 @@
 module Main where
 
+import Database.Mongo.Mongo
+import Database.Mongo.ConnectionInfo
+import Database.Mongo.Types
 
-import Data.Argonaut (printJson)
-import Data.Argonaut.Encode (EncodeJson, encodeJson)
-import Data.Event
-import Data.Maybe
-import Data.Date
+import Control.Monad.Aff
+import Control.Monad.Eff
+import Control.Monad.Eff.Class
+import Control.Monad.Eff.Exception
+
+import Data.Either
 
 import Debug.Trace
 
-event :: Event
-event = Event
-  { name : Just "Cool Event"
-  , date : fromStringStrict "2015-04-24T12:00:00.000Z"
+foreign import traceAny
+  """
+  function traceAny(a){
+    return function () {
+      console.log(a);
+      return {};
+    };
   }
+  """ :: forall e a. a -> Eff (trace :: Trace | e) Unit
 
-main = do
-  print $ "raw event is: " ++ show event
-  print $ "encoded event is: " ++ printJson (encodeJson event)
+main = launchAff $ do
+  
+  Right database <- attempt $ connect $ defaultOptions
+  col <- collection "events" database
+  find ["name":> "Amazing"] ["name":>1, "date":>1] col
+  liftEff $ traceAny col
