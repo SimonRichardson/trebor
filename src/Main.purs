@@ -10,6 +10,7 @@ import Control.Monad.Eff.Class
 import Control.Monad.Eff.Exception
 
 import Data.Either
+import Data.String.Regex
 
 import Debug.Trace
 
@@ -27,5 +28,5 @@ main = launchAff $ do
   
   Right database <- attempt $ connect $ defaultOptions
   col <- collection "events" database
-  find ["name":> "Amazing"] ["name":>1, "date":>1] col
-  liftEff $ traceAny col
+  res <- find ["name" := (regex "Amazing" noFlags)] ["name" := 1, "date" := 1] col
+  liftEff $ traceAny res
