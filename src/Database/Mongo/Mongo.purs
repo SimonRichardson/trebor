@@ -24,6 +24,8 @@ foreign import data Cursor :: *
 type AffDatabase e = Aff (db :: DB | e) Database
 type AffCollection e = Aff (db :: DB | e) Collection
 type AffCursor e = Aff (db :: DB | e) Cursor 
+type AffResult e a = Aff (db :: DB | e) a
+type AffResults e a = Aff (db :: DB | e) [a]
 
 -- | Makes a connection to the database.
 connect :: forall e. ConnectionInfo -> AffDatabase e
@@ -37,8 +39,20 @@ collection :: forall e. String -> Database -> AffCollection e
 collection a b = makeAff' (collection' a b)
 
 -- | Find in the collection
-find :: forall e a. Document -> Document -> Collection -> AffCursor e
-find s h c = makeAff' (find' (printBson s) (printBson h) c) 
+find :: forall e. Document -> Document -> Collection -> AffCursor e
+find s h c = makeAff' (find' _find (printBson s) (printBson h) c) 
+
+-- | Find one item in the collection
+findOne :: forall e. Document -> Document -> Collection -> AffCursor e
+findOne s h c = makeAff' (find' _findOne (printBson s) (printBson h) c)
+
+-- | Collect the results from the cursor
+collect :: forall e a. Cursor -> AffResults e a
+collect = makeAff' <<< collect'
+
+-- | Collect one result from the cursor
+collectOne :: forall e a. Cursor -> AffResult e a
+collectOne = makeAff' <<< collectOne'
 
 -- | Run a request directly without using 'Aff'
 connect' :: forall e
@@ -57,18 +71,41 @@ collection' :: forall e
 collection' name d eb cb = runFn5 _collection name d ignoreCancel eb cb
 
 find' :: forall e
-  . Foreign
+  . (
+      Fn6
+      Foreign
+      Foreign
+      Collection
+      (Collection -> Canceler (db :: DB | e))
+      (Error -> Eff (db :: DB | e) Unit)
+      (Cursor -> Eff (db :: DB | e) Unit)
+      (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+    )
+  -> Foreign
   -> Foreign
   -> Collection
   -> (Error -> Eff (db :: DB | e) Unit)
   -> (Cursor -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
-find' s h c eb cb = runFn6 _find s h c ignoreCancel eb cb
+find' f s h c eb cb = runFn6 f s h c ignoreCancel eb cb
+
+collect' :: forall e a
+  . Cursor
+  -> (Error -> Eff (db :: DB | e) Unit)
+  -> ([a] -> Eff (db :: DB | e) Unit)
+  -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+collect' c eb cb = runFn4 _collect c ignoreCancel eb cb
+
+collectOne' :: forall e a
+  . Cursor
+  -> (Error -> Eff (db :: DB | e) Unit)
+  -> (a -> Eff (db :: DB | e) Unit)
+  -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+collectOne' c eb cb = runFn4 _collectOne c ignoreCancel eb cb
 
 -- | Always ignore the cancel.
 ignoreCancel :: forall e a. a -> Canceler (db :: DB | e)
 ignoreCancel c = Canceler \err -> makeAff (\eb cb -> runFn4 _ignoreCancel c err eb cb)
-
 
 -- | foreign imports
 foreign import _connect
@@ -107,7 +144,7 @@ foreign import _find
   """
   function _find(selector, fields, collection, canceler, errback, callback) {
     collection.find(selector, fields, function(err, x) {
-        (err ? errback(err) : callback(x))();
+      (err ? errback(err) : callback(x))();
     });
     return canceler(collection);
   }
@@ -119,6 +156,61 @@ foreign import _find
                    (Error -> Eff (db :: DB | e) Unit)
                    (Cursor -> Eff (db :: DB | e) Unit)
                    (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+
+foreign import _findOne
+  """
+  function _findOne(selector, fields, collection, canceler, errback, callback) {
+    collection.findOne(selector, fields, function(err, x) {
+      (err ? errback(err) : callback(x))();
+    });
+    return canceler(collection);
+  }
+  """ :: forall e. Fn6
+                   Foreign
+                   Foreign
+                   Collection
+                   (Collection -> Canceler (db :: DB | e))
+                   (Error -> Eff (db :: DB | e) Unit)
+                   (Cursor -> Eff (db :: DB | e) Unit)
+                   (Eff (db :: DB | e) (Canceler (db :: DB | e)))                   
+
+foreign import _collect
+  """
+  function _collect(cursor, canceler, errback, callback) {
+    cursor.toArray(function(err, x) {
+      (err ? errback(err) : callback(x))();
+    });
+    return canceler(cursor);
+  }
+  """ :: forall e a. Fn4
+                     Cursor
+                     (Cursor -> Canceler (db :: DB | e))
+                     (Error -> Eff (db :: DB | e) Unit)
+                     ([a] -> Eff (db :: DB | e) Unit)
+                     (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+
+foreign import _collectOne
+  """
+  function _collectOne(cursor, canceler, errback, callback) {
+    cursor.next(function(err, x) {
+      if (err) {
+        errback(err)();
+      } else if (x === null) {
+        var error = new Error('Not Found.');
+        error.name = 'MongoError';
+        errback(error)();
+      } else {
+        callback(x)();
+      }      
+    });
+    return canceler(cursor);
+  }
+  """ :: forall e a. Fn4
+                     Cursor
+                     (Cursor -> Canceler (db :: DB | e))
+                     (Error -> Eff (db :: DB | e) Unit)
+                     (a -> Eff (db :: DB | e) Unit)
+                     (Eff (db :: DB | e) (Canceler (db :: DB | e)))                    
 
 foreign import _ignoreCancel
   """

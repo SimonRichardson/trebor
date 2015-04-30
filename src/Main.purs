@@ -28,5 +28,6 @@ main = launchAff $ do
   
   Right database <- attempt $ connect $ defaultOptions
   col <- collection "events" database
-  res <- find ["name" := (regex "Amazing" noFlags)] ["name" := 1, "date" := 1] col
+  cur <- find ["name" := (regex "Amazing" noFlags)] ["name" := 1, "date" := 1] col
+  res <- collectOne cur
   liftEff $ traceAny res
