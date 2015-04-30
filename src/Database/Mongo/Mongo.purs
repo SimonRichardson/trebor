@@ -40,11 +40,11 @@ collection a b = makeAff' (collection' a b)
 
 -- | Find in the collection
 find :: forall e. Document -> Document -> Collection -> AffCursor e
-find s h c = makeAff' (find' _find (printBson s) (printBson h) c) 
+find s h c = makeAff' (find' (printBson s) (printBson h) c) 
 
 -- | Find one item in the collection
-findOne :: forall e. Document -> Document -> Collection -> AffCursor e
-findOne s h c = makeAff' (find' _findOne (printBson s) (printBson h) c)
+findOne :: forall e a. Document -> Document -> Collection -> AffResult e a
+findOne s h c = makeAff' (findOne' (printBson s) (printBson h) c)
 
 -- | Collect the results from the cursor
 collect :: forall e a. Cursor -> AffResults e a
@@ -71,23 +71,22 @@ collection' :: forall e
 collection' name d eb cb = runFn5 _collection name d ignoreCancel eb cb
 
 find' :: forall e
-  . (
-      Fn6
-      Foreign
-      Foreign
-      Collection
-      (Collection -> Canceler (db :: DB | e))
-      (Error -> Eff (db :: DB | e) Unit)
-      (Cursor -> Eff (db :: DB | e) Unit)
-      (Eff (db :: DB | e) (Canceler (db :: DB | e)))
-    )
-  -> Foreign
+  .  Foreign
   -> Foreign
   -> Collection
   -> (Error -> Eff (db :: DB | e) Unit)
   -> (Cursor -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
-find' f s h c eb cb = runFn6 f s h c ignoreCancel eb cb
+find' s h c eb cb = runFn6 _find s h c ignoreCancel eb cb
+
+findOne' :: forall e a
+  .  Foreign
+  -> Foreign
+  -> Collection
+  -> (Error -> Eff (db :: DB | e) Unit)
+  -> (a -> Eff (db :: DB | e) Unit)
+  -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
+findOne' s h c eb cb = runFn6 _findOne s h c ignoreCancel eb cb
 
 collect' :: forall e a
   . Cursor
@@ -165,14 +164,14 @@ foreign import _findOne
     });
     return canceler(collection);
   }
-  """ :: forall e. Fn6
-                   Foreign
-                   Foreign
-                   Collection
-                   (Collection -> Canceler (db :: DB | e))
-                   (Error -> Eff (db :: DB | e) Unit)
-                   (Cursor -> Eff (db :: DB | e) Unit)
-                   (Eff (db :: DB | e) (Canceler (db :: DB | e)))                   
+  """ :: forall e a. Fn6
+                     Foreign
+                     Foreign
+                     Collection
+                     (Collection -> Canceler (db :: DB | e))
+                     (Error -> Eff (db :: DB | e) Unit)
+                     (a -> Eff (db :: DB | e) Unit)
+                     (Eff (db :: DB | e) (Canceler (db :: DB | e)))                   
 
 foreign import _collect
   """
