@@ -1,7 +1,8 @@
 module Main where
 
-import Database.Redis.Redis
-import Database.Redis.ConnectionInfo
+import Database.Mongo.Mongo
+import Database.Mongo.ConnectionInfo
+import Database.Mongo.Bson.BsonValue
 
 import Control.Monad.Aff
 import Control.Monad.Eff
@@ -29,6 +30,20 @@ foreign import traceAny
   """ :: forall e a. a -> Eff (trace :: Trace | e) Unit
 
 main = launchAff $ do
+  
+  Right database <- attempt $ connect $ defaultOptions { db = Just "test" }
+  col <- collection "events" database
+  cur <- find [ 
+                "$or" := [ "name" := (regex "Amazing" noFlags)
+                         , "name" := (regex "Wow!" noFlags)
+                         ]
+              ] [] col
+  res <- collect cur
 
-  Right database <- attempt $ connect $ defaultOptions
-  liftEff $ traceAny database
+  liftEff $ case decodeEvents res of
+    Left err -> traceAny err
+    Right x -> traceAny x
+
+  where
+    decodeEvents :: Json -> (Either String [Event])
+    decodeEvents = decodeJson

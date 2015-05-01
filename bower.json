@@ -17,6 +17,7 @@
     "purescript-either"               : "0.1.x",
     "purescript-maybe"                : "0.2.x",
     "purescript-foldable-traversable" : "0.3.x",
-    "purescript-foreign"              : "0.4.x"
+    "purescript-foreign"              : "0.4.x",
+    "purescript-node-mongodb"         : "0.0.1"
   }
 }
