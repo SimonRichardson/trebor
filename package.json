@@ -2,6 +2,7 @@
   "name"    : "trebor",
   "private" : true,
   "devDependencies": {
-    "mongodb": "2.0.x"
+    "mongodb": "2.0.x",
+    "ioredis": "1.1.x"
   }
 }
