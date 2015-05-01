@@ -6,12 +6,13 @@ import Control.Monad.Eff.Class
 import Control.Monad.Eff.Exception (Error(), error)
 import Control.Monad.Error.Class (throwError)
 
+import Data.Argonaut.Core (Json(..))
 import Data.Either
 import Data.Foreign
-import Data.Function (Fn2(), runFn2, Fn3(), runFn3, Fn4(), runFn4, Fn5(), runFn5, Fn6(), runFn6)
+import Data.Function (Fn4(), runFn4, Fn5(), runFn5, Fn6(), runFn6)
 
 import Database.Mongo.ConnectionInfo
-import Database.Mongo.Types
+import Database.Mongo.Bson.BsonValue (Document(..), printBson)
 
 -- | The effect type for DB request made with Mongo
 foreign import data DB :: !
@@ -24,15 +25,11 @@ foreign import data Cursor :: *
 type AffDatabase e = Aff (db :: DB | e) Database
 type AffCollection e = Aff (db :: DB | e) Collection
 type AffCursor e = Aff (db :: DB | e) Cursor 
-type AffResult e a = Aff (db :: DB | e) a
-type AffResults e a = Aff (db :: DB | e) [a]
+type AffResult e = Aff (db :: DB | e) Json
 
 -- | Makes a connection to the database.
 connect :: forall e. ConnectionInfo -> AffDatabase e
 connect = makeAff' <<< connect'
-
-connectWithUri :: forall e. URI -> AffDatabase e
-connectWithUri u = connect $ defaultOptions { uri = u }
 
 -- | Get the collection
 collection :: forall e. String -> Database -> AffCollection e
@@ -43,15 +40,15 @@ find :: forall e. Document -> Document -> Collection -> AffCursor e
 find s h c = makeAff' (find' (printBson s) (printBson h) c) 
 
 -- | Find one item in the collection
-findOne :: forall e a. Document -> Document -> Collection -> AffResult e a
+findOne :: forall e. Document -> Document -> Collection -> AffResult e
 findOne s h c = makeAff' (findOne' (printBson s) (printBson h) c)
 
 -- | Collect the results from the cursor
-collect :: forall e a. Cursor -> AffResults e a
+collect :: forall e. Cursor -> AffResult e
 collect = makeAff' <<< collect'
 
 -- | Collect one result from the cursor
-collectOne :: forall e a. Cursor -> AffResult e a
+collectOne :: forall e. Cursor -> AffResult e
 collectOne = makeAff' <<< collectOne'
 
 -- | Run a request directly without using 'Aff'
@@ -60,7 +57,7 @@ connect' :: forall e
   -> (Error -> Eff (db :: DB | e) Unit)
   -> (Database -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
-connect' info eb cb = runFn4 _connect info ignoreCancel eb cb
+connect' info eb cb = runFn4 _connect (dialUri info) ignoreCancel eb cb
 
 collection' :: forall e
   .  String
@@ -79,26 +76,26 @@ find' :: forall e
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
 find' s h c eb cb = runFn6 _find s h c ignoreCancel eb cb
 
-findOne' :: forall e a
+findOne' :: forall e
   .  Foreign
   -> Foreign
   -> Collection
   -> (Error -> Eff (db :: DB | e) Unit)
-  -> (a -> Eff (db :: DB | e) Unit)
+  -> (Json -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
 findOne' s h c eb cb = runFn6 _findOne s h c ignoreCancel eb cb
 
-collect' :: forall e a
+collect' :: forall e
   . Cursor
   -> (Error -> Eff (db :: DB | e) Unit)
-  -> ([a] -> Eff (db :: DB | e) Unit)
+  -> (Json -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
 collect' c eb cb = runFn4 _collect c ignoreCancel eb cb
 
 collectOne' :: forall e a
   . Cursor
   -> (Error -> Eff (db :: DB | e) Unit)
-  -> (a -> Eff (db :: DB | e) Unit)
+  -> (Json -> Eff (db :: DB | e) Unit)
   -> (Eff (db :: DB | e) (Canceler (db :: DB | e)))
 collectOne' c eb cb = runFn4 _collectOne c ignoreCancel eb cb
 
@@ -109,15 +106,15 @@ ignoreCancel c = Canceler \err -> makeAff (\eb cb -> runFn4 _ignoreCancel c err 
 -- | foreign imports
 foreign import _connect
   """
-  function _connect(info, canceler, errback, callback) {
+  function _connect(uri, canceler, errback, callback) {
     var client = require('mongodb').MongoClient;
-    client.connect(info.uri, function(err, x) {
+    client.connect(uri, function(err, x) {
       (err ? errback(err) : callback(x))();
     });
     return canceler(client);
   }
   """ :: forall e. Fn4 
-                   ConnectionInfo
+                   Uri
                    (Client -> Canceler (db :: DB | e))
                    (Error -> Eff (db :: DB | e) Unit)
                    (Database -> Eff (db :: DB | e) Unit)
@@ -164,13 +161,13 @@ foreign import _findOne
     });
     return canceler(collection);
   }
-  """ :: forall e a. Fn6
+  """ :: forall e. Fn6
                      Foreign
                      Foreign
                      Collection
                      (Collection -> Canceler (db :: DB | e))
                      (Error -> Eff (db :: DB | e) Unit)
-                     (a -> Eff (db :: DB | e) Unit)
+                     (Json -> Eff (db :: DB | e) Unit)
                      (Eff (db :: DB | e) (Canceler (db :: DB | e)))                   
 
 foreign import _collect
@@ -181,11 +178,11 @@ foreign import _collect
     });
     return canceler(cursor);
   }
-  """ :: forall e a. Fn4
+  """ :: forall e. Fn4
                      Cursor
                      (Cursor -> Canceler (db :: DB | e))
                      (Error -> Eff (db :: DB | e) Unit)
-                     ([a] -> Eff (db :: DB | e) Unit)
+                     (Json -> Eff (db :: DB | e) Unit)
                      (Eff (db :: DB | e) (Canceler (db :: DB | e)))
 
 foreign import _collectOne
@@ -204,11 +201,11 @@ foreign import _collectOne
     });
     return canceler(cursor);
   }
-  """ :: forall e a. Fn4
+  """ :: forall e. Fn4
                      Cursor
                      (Cursor -> Canceler (db :: DB | e))
                      (Error -> Eff (db :: DB | e) Unit)
-                     (a -> Eff (db :: DB | e) Unit)
+                     (Json -> Eff (db :: DB | e) Unit)
                      (Eff (db :: DB | e) (Canceler (db :: DB | e)))                    
 
 foreign import _ignoreCancel
@@ -218,7 +215,8 @@ foreign import _ignoreCancel
         callback(false);
     };
   }
-  """ :: forall e a. Fn4 a
+  """ :: forall e a. Fn4 
+                     a
                      Error
                      (Error -> Eff (db :: DB | e) Unit)
                      (Boolean -> Eff (db :: DB | e) Unit)

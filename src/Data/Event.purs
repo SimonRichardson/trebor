@@ -12,7 +12,8 @@ import Data.Traversable (traverse)
 import Debug.Trace
 
 newtype Event = Event
-  { name :: String
+  { name :: Maybe String
+  , date :: Maybe Date
   }
 
 instance decodeJsonEvent :: DecodeJson Event where
@@ -21,6 +22,7 @@ instance decodeJsonEvent :: DecodeJson Event where
     name <- obj .? "name"
     pure $ Event
       { name : name
+      , date : Nothing
       }
 
 instance encodeJsonEvent :: EncodeJson Event where
