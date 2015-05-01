@@ -1,20 +1,49 @@
 module Main where
 
+import Database.Mongo.Mongo
+import Database.Mongo.ConnectionInfo
+import Database.Mongo.Bson.BsonValue
+
+import Control.Monad.Aff
+import Control.Monad.Eff
+import Control.Monad.Eff.Class
+import Control.Monad.Eff.Exception
 
 import Data.Argonaut (printJson)
-import Data.Argonaut.Encode (EncodeJson, encodeJson)
+import Data.Argonaut.Core (Json(..))
+import Data.Argonaut.Decode (DecodeJson, decodeJson)
+import Data.Either
 import Data.Event
 import Data.Maybe
-import Data.Date
+import Data.String.Regex
 
 import Debug.Trace
 
-event :: Event
-event = Event
-  { name : Just "Cool Event"
-  , date : Nothing
+foreign import traceAny
+  """
+  function traceAny(a){
+    return function () {
+      console.log(a);
+      return {};
+    };
   }
+  """ :: forall e a. a -> Eff (trace :: Trace | e) Unit
 
-main = do
-  print $ "raw event is: " ++ show event
-  print $ "encoded event is: " ++ printJson (encodeJson event)
+main = launchAff $ do
+  
+  Right database <- attempt $ connect $ defaultOptions { db = Just "test" }
+  col <- collection "events" database
+  cur <- find [ 
+                "$or" := [ "name" := (regex "Amazing" noFlags)
+                         , "name" := (regex "Wow!" noFlags)
+                         ]
+              ] [] col
+  res <- collect cur
+
+  liftEff $ case decodeEvents res of
+    Left err -> traceAny err
+    Right x -> traceAny x
+
+  where
+    decodeEvents :: Json -> (Either String [Event])
+    decodeEvents = decodeJson
